@@ -7,6 +7,8 @@ import type { Column, HeaderRendererProps } from '../../src';
 import type { Omit } from '../../src/types';
 import type { Props } from './types';
 
+import Pagination from './components/Pagination';
+
 const rootClassname = css`
   display: flex;
   flex-direction: column;
@@ -19,6 +21,8 @@ const rootClassname = css`
 `;
 
 const toolbarClassname = css`
+  display: flex;
+  flex-direction: row-reverse;
   text-align: end;
 `;
 
@@ -45,6 +49,14 @@ const filterClassname = css`
   padding: 4px;
   font-size: 14px;
 `;
+
+interface GlobalRows {
+  search: string;
+}
+
+interface GlobalRowsFilter extends GlobalRows {
+  enabled: boolean;
+}
 
 interface Row {
   id: number;
@@ -76,16 +88,25 @@ function selectStopPropagation(event: React.KeyboardEvent<HTMLSelectElement>) {
   }
 }
 
-export default function HeaderFilters({ direction }: Props) {
+export default function HeaderFilters({ direction }: Props) { 
   const [rows] = useState(createRows);
+  const [globalFilters, setGlobalFilters] = useState<GlobalRowsFilter>({
+    search: '',
+    enabled: true
+  }); 
   const [filters, setFilters] = useState<Filter>({
     task: '',
-    priority: 'Critical',
+    priority: 'All',
     issueType: 'All',
     developer: '',
     complete: undefined,
     enabled: true
   });
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const lastItemIndex = currentPage * itemsPerPage
+  const firstItemIndex = lastItemIndex - itemsPerPage
+  const currentItems = rows.slice(firstItemIndex, lastItemIndex)
 
   const developerOptions = useMemo(
     () =>
@@ -238,8 +259,9 @@ export default function HeaderFilters({ direction }: Props) {
   }, []);
 
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      return (
+    return currentItems.filter((r) => {
+        return (
+        (globalFilters.search ? [r.task, r.priority, r.issueType, r.developer, r.complete.toString].some(item => item.toString().includes(globalFilters.search)) : true) &&
         (filters.task ? r.task.includes(filters.task) : true) &&
         (filters.priority !== 'All' ? r.priority === filters.priority : true) &&
         (filters.issueType !== 'All' ? r.issueType === filters.issueType : true) &&
@@ -249,9 +271,13 @@ export default function HeaderFilters({ direction }: Props) {
         (filters.complete !== undefined ? r.complete >= filters.complete : true)
       );
     });
-  }, [rows, filters]);
+  }, [currentItems, globalFilters, filters]);
 
   function clearFilters() {
+    setGlobalFilters({
+      search: '',
+      enabled: true
+    });
     setFilters({
       task: '',
       priority: 'All',
@@ -263,6 +289,10 @@ export default function HeaderFilters({ direction }: Props) {
   }
 
   function toggleFilters() {
+    setGlobalFilters((globalFilters) => ({
+      ...globalFilters,
+      enabled: !globalFilters.enabled
+    }));
     setFilters((filters) => ({
       ...filters,
       enabled: !filters.enabled
@@ -278,6 +308,21 @@ export default function HeaderFilters({ direction }: Props) {
         <button type="button" onClick={clearFilters}>
           Clear Filters
         </button>
+        {
+        globalFilters.enabled &&
+        <input
+          placeholder="Global search"
+          className={filterClassname}
+          value={globalFilters.search}
+          onChange={(e) =>
+            setGlobalFilters({
+              ...globalFilters,
+              search: e.target.value
+            })
+          } 
+          onKeyDown={inputStopPropagation}
+        />
+        }
       </div>
       <FilterContext.Provider value={filters}>
         <DataGrid
@@ -287,7 +332,22 @@ export default function HeaderFilters({ direction }: Props) {
           headerRowHeight={filters.enabled ? 70 : undefined}
           direction={direction}
         />
-      </FilterContext.Provider>
+        <div style={{display: 'flex'}}>
+          <Pagination totalItems={rows.length} itemsPerPage={itemsPerPage} setCurrentPage={setCurrentPage}/>
+          <select
+            style={{marginLeft: '10px'}}
+            value={itemsPerPage}
+            onChange={(e) =>
+              setItemsPerPage(parseInt(e.target.value, 10))
+            }
+            onKeyDown={selectStopPropagation}
+          >
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="15">15</option>
+          </select>
+        </div>
+        </FilterContext.Provider>
       <datalist id="developers">
         {developerOptions.map(({ label, value }) => (
           <option key={value} value={value}>
